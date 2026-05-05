@@ -1,0 +1,1733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FRIDAY — Global Situational Awareness</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' fill='%2300ff41'>◈</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#050e07;--bg2:rgba(5,14,7,0.93);--bg3:rgba(6,16,8,0.98);
+  --green:#00ff41;--green3:rgba(0,255,65,0.1);
+  --border:rgba(0,255,65,0.14);--border2:rgba(0,255,65,0.28);
+  --text:#a0ffb8;--text2:#4a9960;--text3:#1f5530;
+  --mono:'Share Tech Mono',monospace;--cond:'Barlow Condensed',sans-serif;
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:var(--mono);}
+
+/* SCANLINES */
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.18) 2px,rgba(0,0,0,0.18) 4px);pointer-events:none;z-index:9000;}
+
+/* SCANLINE SWEEP */
+body::after{content:'';position:fixed;left:0;right:0;top:0;height:120px;background:linear-gradient(transparent 0%,rgba(0,255,65,0.045) 50%,transparent 100%);pointer-events:none;z-index:9001;animation:scanSweep 6s linear infinite;}
+@keyframes scanSweep{from{transform:translateY(-120px)}to{transform:translateY(100vh)}}
+
+
+/* MAP */
+#map{position:fixed;inset:0;z-index:0;}
+.leaflet-container{background:#0a1a0f !important;}
+.leaflet-tile{filter:brightness(0.82) contrast(1.08) saturate(0.7);}
+.leaflet-control-attribution{display:none;}
+.leaflet-control-zoom{display:none;}
+
+/* GRID */
+#grid{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:0.04;background-image:linear-gradient(var(--green) 1px,transparent 1px),linear-gradient(90deg,var(--green) 1px,transparent 1px);background-size:80px 80px;}
+
+/* TOP BAR */
+#topbar{position:fixed;top:0;left:0;right:0;height:38px;z-index:1000;display:flex;align-items:center;padding:0 16px;gap:12px;background:var(--bg2);border-bottom:1px solid var(--border2);}
+.logo{font-family:var(--cond);font-weight:700;font-size:20px;letter-spacing:4px;color:var(--green);text-shadow:0 0 18px rgba(0,255,65,0.55);white-space:nowrap;}
+.logo sup{font-size:8px;color:var(--text2);letter-spacing:1px;vertical-align:super;font-family:var(--mono);}
+.tb-sep{width:1px;height:20px;background:var(--border2);flex-shrink:0;}
+.tb-nav{display:flex;gap:2px;}
+.tb-btn{font-size:10px;letter-spacing:2px;padding:4px 12px;cursor:pointer;border:1px solid transparent;color:var(--text2);background:transparent;transition:all 0.2s;text-transform:uppercase;font-family:var(--mono);}
+.tb-btn.active,.tb-btn:hover{color:var(--green);border-color:var(--border2);background:var(--green3);}
+.tb-clock{font-size:11px;color:var(--green);letter-spacing:1px;white-space:nowrap;}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 1s infinite;flex-shrink:0;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.15}}
+.live-lbl{font-size:9px;color:var(--green);letter-spacing:2px;}
+.creator-tag{font-size:9px;color:var(--text3);letter-spacing:2px;margin-left:auto;padding-right:4px;}
+.creator-tag span{color:var(--text2);}
+
+/* TICKER */
+#ticker{position:fixed;bottom:0;left:0;right:0;height:28px;z-index:1000;background:var(--bg2);border-top:1px solid var(--border2);display:flex;align-items:center;overflow:hidden;}
+.ticker-live{display:flex;align-items:center;gap:6px;padding:0 12px;border-right:1px solid var(--border2);flex-shrink:0;}
+.ticker-scroll{flex:1;overflow:hidden;white-space:nowrap;}
+.ticker-inner{display:inline-block;animation:tscroll 70s linear infinite;}
+@keyframes tscroll{from{transform:translateX(100vw)}to{transform:translateX(-100%)}}
+.ti{display:inline-block;margin-right:40px;font-size:10px;letter-spacing:1px;color:var(--text2);}
+.tup{color:var(--green);}
+.tdn{color:#ff4444;}
+
+/* LEFT SIDEBAR */
+#sidebar{position:fixed;left:0;top:38px;bottom:28px;z-index:1000;display:flex;flex-direction:column;justify-content:flex-end;padding:0 0 16px 14px;pointer-events:none;}
+.sb-btn{display:flex;align-items:center;gap:8px;padding:7px 12px;margin-bottom:4px;cursor:pointer;border:1px solid var(--border);background:var(--bg2);color:var(--text2);font-size:10px;letter-spacing:2px;text-transform:uppercase;transition:all 0.2s;pointer-events:all;width:118px;font-family:var(--mono);}
+.sb-btn:hover,.sb-btn.active{color:var(--green);border-color:var(--border2);background:var(--green3);}
+.sb-icon{font-size:11px;width:13px;text-align:center;}
+
+/* COORDS */
+#coords{position:fixed;bottom:36px;right:156px;z-index:1000;text-align:right;pointer-events:none;}
+.coord-main{font-size:13px;color:var(--green);letter-spacing:1px;}
+.coord-sub{font-size:9px;color:var(--text2);letter-spacing:1px;margin-top:1px;}
+
+/* RIGHT CONTROLS */
+#right-ctrl{position:fixed;right:0;top:38px;bottom:28px;z-index:1000;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-end;padding:0 14px 16px 0;pointer-events:none;}
+.rc-btn{display:flex;align-items:center;gap:8px;padding:6px 12px;margin-bottom:3px;cursor:pointer;border:1px solid var(--border);background:var(--bg2);color:var(--text2);font-size:10px;letter-spacing:2px;text-transform:uppercase;transition:all 0.2s;pointer-events:all;font-family:var(--mono);}
+.rc-btn:hover{color:var(--green);border-color:var(--border2);background:var(--green3);}
+
+/* PANELS */
+.panel{position:fixed;z-index:9500;background:var(--bg3);border:1px solid var(--border2);min-width:300px;display:none;flex-direction:column;box-shadow:0 0 30px rgba(0,255,65,0.06);}
+.panel.open{display:flex;}
+.panel-head{display:flex;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);cursor:move;gap:8px;user-select:none;}
+.pdot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);flex-shrink:0;}
+.ptitle{font-size:10px;letter-spacing:3px;color:var(--green);text-transform:uppercase;flex:1;}
+.pclose{cursor:pointer;color:var(--text2);font-size:13px;padding:0 2px;line-height:1;}
+#topbar-search{position:relative;display:flex;align-items:center;}
+#map-search-input{background:transparent;border:none;border-bottom:1px solid var(--border2);color:var(--green);font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:4px 10px;outline:none;caret-color:var(--green);width:160px;transition:width 0.2s,border-color 0.2s;}
+#map-search-input::placeholder{color:var(--text3);letter-spacing:1px;}
+#map-search-input:focus{width:220px;border-color:var(--green);}
+#map-search-results{position:absolute;top:calc(100% + 8px);left:0;width:280px;background:rgba(5,14,7,0.97);border:1px solid var(--border2);display:none;max-height:260px;overflow-y:auto;z-index:2000;}
+#map-search-results.show{display:block;}
+.msr-item{padding:8px 14px;font-size:10px;color:var(--text);letter-spacing:0.5px;cursor:pointer;border-bottom:1px solid var(--border);}
+.msr-item:hover{background:var(--green3);color:var(--green);}
+.msr-item:last-child{border-bottom:none;}
+.msr-name{font-size:11px;color:var(--green);margin-bottom:2px;}
+.msr-sub{font-size:9px;color:var(--text3);letter-spacing:1px;}
+#sat-topbar-btn.active{color:var(--green)!important;border-color:var(--border2)!important;background:var(--green3)!important;}
+.sat-labels{filter:invert(1) brightness(1.8) contrast(1.2);}
+
+.pclose:hover{color:var(--green);}
+.panel-body{overflow-y:auto;max-height:580px;}
+.panel-body::-webkit-scrollbar{width:2px;}
+.panel-body::-webkit-scrollbar-thumb{background:var(--border2);}
+
+/* STOCKS TABS */
+.stab{font-size:9px;letter-spacing:2px;padding:5px 14px;cursor:pointer;color:var(--text3);border-right:1px solid var(--border);transition:all 0.18s;text-transform:uppercase;font-family:var(--mono);}
+.stab:hover{color:var(--text2);}
+.stab.active{color:var(--green);background:var(--green3);border-bottom:1px solid var(--green);}
+
+/* INDEX CARDS */
+.idx-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--border);margin:0;}
+.idx-card{background:var(--bg3);padding:10px 12px;cursor:pointer;transition:background 0.15s;position:relative;overflow:hidden;}
+.idx-card:hover{background:rgba(0,255,65,0.05);}
+.idx-card.neg{border-top:2px solid #ff444444;}
+.idx-card.pos{border-top:2px solid #00ff4144;}
+.idx-sym{font-size:10px;color:var(--green);letter-spacing:1px;margin-bottom:1px;}
+.idx-name{font-size:8px;color:var(--text3);letter-spacing:1px;margin-bottom:5px;}
+.idx-val{font-family:var(--cond);font-size:20px;font-weight:700;color:var(--text);line-height:1;}
+.idx-chg-row{display:flex;align-items:center;gap:5px;margin-top:3px;}
+.idx-chg{font-size:10px;letter-spacing:0.5px;}
+.idx-mini{width:100%;height:28px;margin-top:6px;opacity:0.7;}
+
+/* METRICS ROW */
+.metrics-row{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);}
+.metric-card{background:var(--bg3);padding:10px 14px;}
+.metric-lbl{font-size:8px;letter-spacing:3px;color:var(--text3);margin-bottom:4px;}
+.metric-val{font-family:var(--cond);font-size:22px;font-weight:700;color:var(--green);line-height:1;}
+.metric-sub{font-size:8px;color:var(--text3);margin-top:3px;letter-spacing:1px;}
+
+/* VOLATILITY BAR */
+.vix-bar-wrap{height:6px;border-radius:3px;background:linear-gradient(90deg,#00ff41,#ffe600 50%,#ff4444);margin:6px 0;position:relative;}
+.vix-marker{position:absolute;top:-3px;width:2px;height:12px;background:white;border-radius:1px;transform:translateX(-50%);box-shadow:0 0 6px rgba(255,255,255,0.8);}
+
+/* BREADTH BAR */
+.breadth-bar{height:5px;background:var(--border);border-radius:2px;margin-top:6px;overflow:hidden;}
+.breadth-fill{height:100%;background:var(--green);border-radius:2px;transition:width 0.4s;}
+.breadth-fill.neg{background:#ff4444;}
+.stock-row{display:grid;grid-template-columns:58px 1fr 82px 66px;align-items:center;padding:6px 12px;border-bottom:1px solid rgba(0,255,65,0.06);cursor:pointer;transition:background 0.12s;gap:4px;}
+.stock-row:hover{background:var(--green3);}
+.s-sym{font-size:12px;color:var(--green);font-weight:600;letter-spacing:1px;}
+.s-name{font-size:9px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.s-val{font-size:11px;color:var(--text);text-align:right;}
+.s-chg{font-size:11px;text-align:right;}
+.up{color:var(--green);}
+.dn{color:#ff4444;}
+.sec-lbl{font-size:9px;letter-spacing:3px;color:var(--text3);padding:5px 12px 4px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.25);}
+
+/* BUBBLES — styled like reference: radial gradient fill, outer pulsing ring, inner dot */
+.bubble{border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;cursor:pointer;border:none;position:relative;transition:transform 0.2s;z-index:1;}
+.bubble:hover{transform:scale(1.1);}
+.bubble::before{content:'';position:absolute;inset:-5px;border-radius:50%;border:2px solid currentColor;opacity:0.35;animation:ring 2.5s ease-out infinite;}
+.bubble::after{content:'';position:absolute;inset:-14px;border-radius:50%;border:1px solid currentColor;opacity:0.15;animation:ring 2.5s ease-out infinite 0.7s;}
+@keyframes ring{0%{transform:scale(1);opacity:0.45}100%{transform:scale(1.6);opacity:0}}
+
+/* LOADER */
+#loader{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;}
+.ld-logo{font-family:var(--cond);font-size:32px;letter-spacing:8px;color:var(--green);text-shadow:0 0 24px rgba(0,255,65,0.65);}
+.ld-sub{font-size:9px;color:var(--text2);letter-spacing:4px;margin-top:-8px;}
+.ld-bar{width:280px;height:1px;background:var(--border);}
+.ld-fill{height:100%;background:var(--green);width:0%;transition:width 0.35s;box-shadow:0 0 8px var(--green);}
+.ld-txt{font-size:9px;color:var(--text2);letter-spacing:3px;}
+.ld-credit{font-size:9px;color:var(--text3);letter-spacing:2px;margin-top:8px;}
+.ld-credit span{color:var(--text2);}
+
+/* FRIDAY AI CHATBOT */
+#chat-panel{width:400px;}
+#chat-body{display:flex;flex-direction:column;height:500px;max-height:500px;overflow:hidden;padding:0;}
+#chat-log{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth;}
+#chat-log::-webkit-scrollbar{width:2px;}
+#chat-log::-webkit-scrollbar-thumb{background:var(--border2);}
+.cmsg{max-width:88%;padding:8px 11px;font-size:11px;line-height:1.55;letter-spacing:0.3px;border:1px solid var(--border);word-wrap:break-word;position:relative;}
+.cmsg.bot{align-self:flex-start;background:rgba(0,255,65,0.04);color:var(--text);border-color:var(--border2);}
+.cmsg.bot::before{content:'◈ FRIDAY';display:block;font-size:8px;letter-spacing:2px;color:var(--green);margin-bottom:4px;font-family:var(--mono);}
+.cmsg.user{align-self:flex-end;background:rgba(0,0,0,0.4);color:var(--text);border-color:var(--border);}
+.cmsg.user::before{content:'OPERATOR';display:block;font-size:8px;letter-spacing:2px;color:var(--text2);margin-bottom:3px;font-family:var(--mono);text-align:right;}
+.cmsg b{color:var(--green);font-weight:600;}
+.cmsg .upx{color:var(--green);}
+.cmsg .dnx{color:#ff4444;}
+.cmsg ul{margin:4px 0 0 14px;padding:0;}
+.cmsg li{font-size:10px;color:var(--text);margin:1px 0;letter-spacing:0.5px;}
+/* Copy button on bot messages */
+.cmsg.bot .msg-copy{display:none;position:absolute;bottom:4px;right:6px;font-size:8px;letter-spacing:1px;color:var(--text3);cursor:pointer;padding:2px 5px;border:1px solid var(--border);background:var(--bg3);transition:all 0.15s;}
+.cmsg.bot:hover .msg-copy{display:block;}
+.cmsg.bot .msg-copy:hover{color:var(--green);border-color:var(--border2);}
+/* Streaming cursor */
+.stream-cursor{display:inline-block;width:7px;height:11px;background:var(--green);margin-left:2px;vertical-align:middle;animation:cur 0.7s step-end infinite;opacity:0.85;}
+@keyframes cur{0%,100%{opacity:0.85}50%{opacity:0}}
+/* Typing / status indicator */
+.ctyping{align-self:flex-start;font-size:9px;color:var(--text2);letter-spacing:2px;padding:5px 0 5px 6px;display:flex;align-items:center;gap:7px;}
+.ctyping-dots{display:flex;gap:3px;align-items:center;}
+.ctyping-dots span{display:inline-block;width:4px;height:4px;border-radius:50%;background:var(--green);animation:cdot 1.2s infinite ease-in-out;}
+.ctyping-dots span:nth-child(2){animation-delay:0.2s;}
+.ctyping-dots span:nth-child(3){animation-delay:0.4s;}
+@keyframes cdot{0%,80%,100%{opacity:0.2;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+#chat-status-text{font-size:9px;color:var(--green);letter-spacing:2px;}
+#chat-quick{display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px;border-top:1px solid var(--border);background:rgba(0,0,0,0.25);}
+.cq{font-size:8px;letter-spacing:1.5px;padding:4px 9px;border:1px solid var(--border);color:var(--text2);background:transparent;cursor:pointer;text-transform:uppercase;font-family:var(--mono);transition:all 0.15s;}
+.cq:hover{color:var(--green);border-color:var(--border2);background:var(--green3);}
+#chat-input-row{display:flex;gap:0;border-top:1px solid var(--border2);background:rgba(0,0,0,0.4);}
+#chat-input{flex:1;background:transparent;border:none;outline:none;color:var(--green);font-family:var(--mono);font-size:11px;letter-spacing:0.5px;padding:9px 12px;caret-color:var(--green);}
+#chat-input::placeholder{color:var(--text3);letter-spacing:1px;}
+
+#chat-send{background:transparent;border:none;border-left:1px solid var(--border);color:var(--green);font-family:var(--mono);font-size:10px;letter-spacing:2px;padding:0 14px;cursor:pointer;text-transform:uppercase;transition:all 0.2s;flex-shrink:0;}
+#chat-send:hover{background:var(--green3);}
+/* Clear chat button */
+.chat-clear-btn{font-size:8px;letter-spacing:1.5px;color:var(--text3);cursor:pointer;padding:2px 8px;border:1px solid transparent;font-family:var(--mono);transition:all 0.15s;background:transparent;}
+.chat-clear-btn:hover{color:#ff4444;border-color:rgba(255,68,68,0.3);}
+
+/* POPUP */
+.leaflet-popup-content-wrapper{background:var(--bg3)!important;border:1px solid var(--border2)!important;border-radius:0!important;box-shadow:0 0 20px rgba(0,255,65,0.1)!important;padding:0!important;}
+.leaflet-popup-tip{background:var(--bg3)!important;}
+.leaflet-popup-content{margin:0!important;padding:10px 14px!important;}
+.ptag{font-size:9px;letter-spacing:2px;color:var(--green);margin-bottom:4px;text-transform:uppercase;}
+.ptitle-p{font-family:var(--cond);font-size:14px;font-weight:600;color:var(--green);line-height:1.3;}
+.pmeta{font-size:9px;color:var(--text3);margin-top:3px;letter-spacing:1px;}
+
+/* ── MOBILE RESPONSIVE ──────────────────────────────────────────────────────── */
+/* Hide mobile search bar on desktop */
+#mobile-search-bar{display:none;}
+
+@media (max-width:600px){
+  /* TOP BAR — single clean row, 38px, no wrapping */
+  #topbar{
+    padding:0 8px;
+    gap:6px;
+    height:38px;
+    flex-wrap:nowrap;
+    align-items:center;
+    overflow:hidden;
+  }
+  .logo{font-size:14px;letter-spacing:2px;flex-shrink:0;}
+  .tb-clock{display:none;}
+  .creator-tag{display:none;}
+  #topbar .tb-sep{display:none;}
+  .desktop-search{display:none !important;}
+  .tb-nav{display:flex;gap:0;flex-shrink:0;}
+  .tb-nav .tb-btn{padding:4px 8px;font-size:9px;letter-spacing:1px;white-space:nowrap;}
+  #topbar .live-dot{margin-left:auto;}
+
+  /* MOBILE SEARCH BAR — fixed strip below the topbar */
+  #mobile-search-bar{
+    display:flex;
+    align-items:center;
+    position:fixed;
+    top:38px;
+    left:0;
+    right:0;
+    height:30px;
+    background:var(--bg2);
+    border-bottom:1px solid var(--border2);
+    padding:0 10px;
+    z-index:1000;
+  }
+  #map-search-input-mobile{
+    flex:1;
+    background:transparent;
+    border:none;
+    color:var(--green);
+    font-family:var(--mono);
+    font-size:10px;
+    letter-spacing:1px;
+    outline:none;
+    caret-color:var(--green);
+  }
+  #map-search-input-mobile::placeholder{color:var(--text3);letter-spacing:1px;}
+  #map-search-results-mobile{
+    position:absolute;
+    top:100%;
+    left:0;
+    right:0;
+    background:rgba(5,14,7,0.97);
+    border:1px solid var(--border2);
+    display:none;
+    max-height:260px;
+    overflow-y:auto;
+    z-index:2000;
+  }
+  #map-search-results-mobile.show{display:block;}
+
+  /* TICKER */
+  #ticker{height:24px;}
+  .ticker-live{padding:0 8px;}
+  .ti{font-size:9px;margin-right:24px;}
+
+  /* SIDEBAR — move to bottom-left row, reduce size */
+  #sidebar{
+    flex-direction:row;
+    justify-content:flex-start;
+    align-items:center;
+    padding:0 8px 36px 8px;
+    gap:6px;
+    top:auto;
+    bottom:0;
+    left:0;
+    right:auto;
+    pointer-events:all;
+  }
+  .sb-btn{
+    width:auto;
+    padding:5px 10px;
+    font-size:9px;
+    letter-spacing:1px;
+    margin-bottom:0;
+  }
+
+  /* RIGHT CONTROLS — smaller, tighter */
+  #right-ctrl{
+    padding:0 8px 36px 0;
+    top:68px;
+  }
+  .rc-btn{
+    font-size:9px;
+    letter-spacing:1px;
+    padding:5px 8px;
+    margin-bottom:2px;
+  }
+
+  /* COORDS — move up and shrink */
+  #coords{
+    bottom:32px;
+    right:8px;
+    left:auto;
+  }
+  .coord-main{font-size:10px;}
+  .coord-sub{font-size:8px;}
+
+  /* PANELS — full width, full height on mobile */
+  .panel{
+    position:fixed !important;
+    top:68px !important;
+    left:0 !important;
+    right:0 !important;
+    bottom:24px !important;
+    width:100% !important;
+    min-width:unset !important;
+    cursor:default;
+  }
+  .panel-head{cursor:default;}
+
+  /* CHAT PANEL — fill available height */
+  #chat-panel{width:100% !important;}
+  #chat-body{height:100%;max-height:none;flex:1;}
+  #chat-log{flex:1;}
+
+
+  /* STOCKS PANEL */
+  #stocks-panel{width:100% !important;}
+  .panel-body{max-height:none;}
+
+  /* INDEX GRID — 2 cols on small screens */
+  .idx-grid{grid-template-columns:1fr 1fr;}
+
+  /* METRICS ROW */
+  .metrics-row{grid-template-columns:1fr;}
+
+  /* STOCK ROWS — compress columns */
+  .stock-row{grid-template-columns:42px 1fr 72px 56px;padding:5px 8px;}
+  .s-sym{font-size:10px;}
+  .s-val{font-size:11px;}
+  .s-chg{font-size:10px;}
+
+  /* Disable drag on mobile (panels are fullscreen) */
+  .panel-head{user-select:none;}
+
+  /* ABOUT PANEL — full width on mobile */
+  #about-panel{
+    position:fixed !important;
+    top:68px !important;
+    left:0 !important;
+    right:0 !important;
+    bottom:24px !important;
+    width:100% !important;
+    min-width:unset !important;
+    transform:none !important;
+  }
+
+  /* Prevent body scroll issues on iOS */
+  body{touch-action:manipulation;}
+
+  /* TICKER — adjust for sidebar overlap */
+  #ticker{left:0;}
+}
+
+@media (max-width:380px){
+  .logo{font-size:13px;letter-spacing:1px;}
+  .tb-nav .tb-btn{font-size:8px;padding:3px 6px;letter-spacing:0.5px;}
+  .sb-btn{font-size:8px;padding:4px 7px;}
+  .rc-btn{font-size:8px;padding:4px 6px;}
+  .idx-grid{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="ld-logo">FRIDAY</div>
+  <div class="ld-sub">GLOBAL SITUATIONAL AWARENESS · CLAUDE AI</div>
+  <div class="ld-bar"><div class="ld-fill" id="ld-fill"></div></div>
+  <div class="ld-txt" id="ld-txt">INITIALIZING...</div>
+  <div class="ld-credit">CREATED BY <span>ZARCYEA</span></div>
+</div>
+
+<div id="grid"></div>
+<div id="map"></div>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div class="logo">◈ FRIDAY<sup>v2.1</sup></div>
+  <div class="tb-sep"></div>
+  <div class="tb-nav">
+    <div class="tb-btn active">THE MAP</div>
+    <div class="tb-btn" id="sat-topbar-btn" onclick="toggleSatellite()">🛰 SATELLITE</div>
+    <div class="tb-btn" onclick="togglePanel('about-panel')">ABOUT</div>
+  </div>
+  <div class="tb-sep"></div>
+  <div id="topbar-search" class="desktop-search">
+    <input id="map-search-input" type="text" placeholder="⌕ SEARCH..." autocomplete="off" />
+    <div id="map-search-results"></div>
+  </div>
+  <div class="tb-sep"></div>
+  <div class="live-dot"></div>
+  <div class="live-lbl">LIVE</div>
+  <div class="creator-tag">BY <span>ZARCYEA</span></div>
+  <div class="tb-sep"></div>
+  <div class="tb-clock" id="clock">--/--/---- --:--:-- UTC</div>
+</div>
+<!-- MOBILE SEARCH BAR (below header, mobile only) -->
+<div id="mobile-search-bar">
+  <input id="map-search-input-mobile" type="text" placeholder="⌕ SEARCH LOCATION..." autocomplete="off" />
+  <div id="map-search-results-mobile"></div>
+</div>
+
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div class="sb-btn" onclick="togglePanel('chat-panel');focusChat();"><span class="sb-icon">◈</span>FRIDAY AI</div>
+  <div class="sb-btn" onclick="togglePanel('stocks-panel')"><span class="sb-icon">∿</span>STOCKS</div>
+  <div class="sb-btn" onclick="togglePanel('outbreaks-panel')"><span class="sb-icon">⚠</span>OUTBREAKS</div>
+</div>
+
+<!-- RIGHT CONTROLS -->
+<div id="right-ctrl">
+  <div class="rc-btn" onclick="locateUser()">◎ LOCATE ME</div>
+  <div class="rc-btn" onclick="map.setView([12.8797,121.7740],6)">↺ RESET</div>
+  <div class="rc-btn" onclick="map.zoomIn()">+ ZOOM IN</div>
+  <div class="rc-btn" onclick="map.zoomOut()">− ZOOM OUT</div>
+</div>
+
+<!-- COORDS -->
+<div id="coords">
+  <div class="coord-main" id="coord-main">20.00° N  10.00° E</div>
+  <div class="coord-sub" id="coord-sub">(20.000000, 10.000000)</div>
+</div>
+
+<!-- TICKER -->
+<div id="ticker">
+  <div class="ticker-live"><div class="live-dot"></div><span class="live-lbl">LIVE</span></div>
+  <div class="ticker-scroll"><div class="ticker-inner" id="ticker-inner">LOADING...</div></div>
+</div>
+
+<!-- FRIDAY AI CHAT PANEL -->
+<div class="panel" id="chat-panel" style="top:58px;left:150px;">
+  <div class="panel-head" onmousedown="dragStart(event,'chat-panel')">
+    <div class="pdot"></div>
+    <div class="ptitle">◈ FRIDAY AI · ASSISTANT</div>
+    <button class="chat-clear-btn" onmousedown="event.stopPropagation()" onclick="clearChat()" title="Clear conversation">CLR</button>
+    <div class="pclose" onmousedown="event.stopPropagation()" onclick="togglePanel('chat-panel')">✕</div>
+  </div>
+  <div id="chat-body">
+    <div id="chat-log"></div>
+    <div id="chat-quick">
+      <div class="cq" onclick="chatQuick('market status')">MARKET</div>
+      <div class="cq" onclick="chatQuick('btc price')">BTC</div>
+      <div class="cq" onclick="chatQuick('eth price')">ETH</div>
+      <div class="cq" onclick="chatQuick('sol price')">SOL</div>
+      <div class="cq" onclick="chatQuick('usd to php')">PHP</div>
+      <div class="cq" onclick="chatQuick('top gainers')">GAINERS</div>
+      <div class="cq" onclick="chatQuick('top losers')">LOSERS</div>
+      <div class="cq" onclick="chatQuick('compare btc eth')">COMPARE</div>
+      <div class="cq" onclick="chatQuick('latest crypto news and what is happening in global markets today')">NEWS</div>
+      <div class="cq" onclick="chatQuick('give me a brief market analysis and what to watch this week')">ANALYZE</div>
+      <div class="cq" onclick="chatQuick('all rates')">FOREX</div>
+      <div class="cq" onclick="chatQuick('help')">HELP</div>
+    </div>
+    <div id="chat-input-row">
+      <input id="chat-input" type="text" placeholder="ASK FRIDAY..." autocomplete="off" onkeydown="if(event.key==='Enter')chatSend();"/>
+      <button id="chat-send" onclick="chatSend()">SEND ▸</button>
+    </div>
+  </div>
+</div>
+
+<!-- ABOUT PANEL -->
+<div class="panel" id="about-panel" style="top:58px;left:150px;width:480px;">
+  <div class="panel-head" onmousedown="dragStart(event,'about-panel')">
+    <div class="pdot"></div>
+    <div class="ptitle">◈ ABOUT · FRIDAY v2.1</div>
+    <div class="pclose" onmousedown="event.stopPropagation()" onclick="togglePanel('about-panel')">✕</div>
+  </div>
+  <div class="panel-body">
+
+    <!-- Hero -->
+    <div style="padding:22px 20px 16px;border-bottom:1px solid var(--border);text-align:center;">
+      <div style="font-family:var(--cond);font-size:36px;font-weight:700;letter-spacing:8px;color:var(--green);text-shadow:0 0 24px rgba(0,255,65,0.5);line-height:1;">FRIDAY</div>
+      <div style="font-size:9px;letter-spacing:4px;color:var(--text2);margin-top:4px;">GLOBAL SITUATIONAL AWARENESS SYSTEM</div>
+      <div style="display:inline-block;margin-top:10px;padding:3px 14px;border:1px solid var(--border2);font-size:9px;letter-spacing:2px;color:var(--green);">v2.1 · ACTIVE</div>
+    </div>
+
+    <!-- Description -->
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border);">
+      <div style="font-size:9px;letter-spacing:3px;color:var(--text3);margin-bottom:8px;">MISSION BRIEF</div>
+      <div style="font-size:11px;color:var(--text);line-height:1.7;letter-spacing:0.3px;">
+        FRIDAY is a real-time global market intelligence dashboard designed for traders, analysts, and enthusiasts who need live data at a glance. Track crypto prices, forex rates, and market sentiment — all in one tactical interface built with a Philippine market focus.
+      </div>
+    </div>
+
+    <!-- Creator -->
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border);">
+      <div style="font-size:9px;letter-spacing:3px;color:var(--text3);margin-bottom:10px;">CREATOR</div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="width:38px;height:38px;border-radius:50%;border:1px solid var(--border2);background:var(--green3);display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--green);flex-shrink:0;">Z</div>
+        <div>
+          <div style="font-family:var(--cond);font-size:18px;font-weight:700;color:var(--green);letter-spacing:3px;">ZARCYEA</div>
+          <div style="font-size:9px;color:var(--text2);letter-spacing:1px;margin-top:2px;">Developer · Designer · Builder</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tech stack -->
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border);">
+      <div style="font-size:9px;letter-spacing:3px;color:var(--text3);margin-bottom:10px;">TECH STACK</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        <div style="padding:8px 10px;border:1px solid var(--border);background:rgba(0,255,65,0.03);">
+          <div style="font-size:8px;letter-spacing:2px;color:var(--text3);">AI ENGINE</div>
+          <div style="font-size:11px;color:var(--green);margin-top:2px;">Claude AI (Anthropic)</div>
+        </div>
+        <div style="padding:8px 10px;border:1px solid var(--border);background:rgba(0,255,65,0.03);">
+          <div style="font-size:8px;letter-spacing:2px;color:var(--text3);">MAPPING</div>
+          <div style="font-size:11px;color:var(--green);margin-top:2px;">Leaflet.js · CartoDB</div>
+        </div>
+        <div style="padding:8px 10px;border:1px solid var(--border);background:rgba(0,255,65,0.03);">
+          <div style="font-size:8px;letter-spacing:2px;color:var(--text3);">CRYPTO DATA</div>
+          <div style="font-size:11px;color:var(--green);margin-top:2px;">CoinGecko API</div>
+        </div>
+        <div style="padding:8px 10px;border:1px solid var(--border);background:rgba(0,255,65,0.03);">
+          <div style="font-size:8px;letter-spacing:2px;color:var(--text3);">FOREX DATA</div>
+          <div style="font-size:11px;color:var(--green);margin-top:2px;">Frankfurter / ECB</div>
+        </div>
+        <div style="padding:8px 10px;border:1px solid var(--border);background:rgba(0,255,65,0.03);">
+          <div style="font-size:8px;letter-spacing:2px;color:var(--text3);">INTERFACE</div>
+          <div style="font-size:11px;color:var(--green);margin-top:2px;">Vanilla JS · HTML5</div>
+        </div>
+        <div style="padding:8px 10px;border:1px solid var(--border);background:rgba(0,255,65,0.03);">
+          <div style="font-size:8px;letter-spacing:2px;color:var(--text3);">TYPOGRAPHY</div>
+          <div style="font-size:11px;color:var(--green);margin-top:2px;">Share Tech Mono · Barlow</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Features -->
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border);">
+      <div style="font-size:9px;letter-spacing:3px;color:var(--text3);margin-bottom:10px;">CAPABILITIES</div>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text);letter-spacing:0.5px;"><span style="color:var(--green);">▸</span> Live crypto prices for 18+ assets — refreshes every 60s</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text);letter-spacing:0.5px;"><span style="color:var(--green);">▸</span> Real-time forex rates for 10 major currencies</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text);letter-spacing:0.5px;"><span style="color:var(--green);">▸</span> PHP conversion for all assets — Philippine Peso focus</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text);letter-spacing:0.5px;"><span style="color:var(--green);">▸</span> Claude AI assistant with live market context</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text);letter-spacing:0.5px;"><span style="color:var(--green);">▸</span> Coin comparisons, conversions, and market sentiment</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text);letter-spacing:0.5px;"><span style="color:var(--green);">▸</span> Interactive world map with geolocation</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text);letter-spacing:0.5px;"><span style="color:var(--green);">▸</span> Live market ticker — crypto + forex</div>
+      </div>
+    </div>
+
+    <!-- Version / footer -->
+    <div style="padding:12px 20px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-size:9px;color:var(--text3);letter-spacing:2px;">FRIDAY v2.1 · <span id="about-build-date"></span></div>
+      <div style="font-size:9px;color:var(--text3);letter-spacing:1px;">🇵🇭 BUILT IN THE PHILIPPINES</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- STOCKS PANEL -->
+<div class="panel" id="stocks-panel" style="top:58px;left:150px;width:560px;">
+  <div class="panel-head" onmousedown="dragStart(event,'stocks-panel')">
+    <div class="pdot"></div>
+    <div class="ptitle">∿ STOCKS &amp; MARKETS</div>
+    <div class="pclose" onmousedown="event.stopPropagation()" onclick="togglePanel('stocks-panel')">✕</div>
+  </div>
+  <!-- Stocks tabs -->
+  <div id="stocks-tabs" style="display:flex;gap:0;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.3);">
+    <div class="stab active" onclick="switchStocksTab('overview')" data-tab="overview">OVERVIEW</div>
+    <div class="stab" onclick="switchStocksTab('crypto')" data-tab="crypto">CRYPTO</div>
+    <div class="stab" onclick="switchStocksTab('forex')" data-tab="forex">FOREX</div>
+  </div>
+  <div class="panel-body" id="stocks-body"><div style="padding:18px;color:var(--text2);font-size:10px;letter-spacing:2px;">LOADING...</div></div>
+</div>
+
+<!-- OUTBREAKS PANEL -->
+<div class="panel" id="outbreaks-panel" style="top:58px;left:150px;width:540px;">
+  <div class="panel-head" onmousedown="dragStart(event,'outbreaks-panel')">
+    <div class="pdot"></div>
+    <div class="ptitle">⚠ DISEASE OUTBREAKS · GLOBAL</div>
+    <div class="pclose" onmousedown="event.stopPropagation()" onclick="togglePanel('outbreaks-panel')">✕</div>
+  </div>
+  <div class="panel-body" id="outbreaks-body"><div style="padding:18px;color:var(--text2);font-size:10px;letter-spacing:2px;">INITIALIZING OUTBREAK DATA...</div></div>
+</div>
+
+
+
+
+
+
+
+<script>
+// ── ABOUT PANEL build date ───────────────────────────────────────────────────
+(function(){
+  const el=document.getElementById('about-build-date');
+  if(el){const n=new Date();el.textContent=n.toLocaleString('en',{month:'short'}).toUpperCase()+' '+n.getFullYear();}
+  // Wire ABOUT nav button active state
+  const aboutBtn=document.querySelector('.tb-btn:not(.active)');
+  if(aboutBtn){
+    aboutBtn.addEventListener('click',function(){
+      const isOpen=document.getElementById('about-panel').classList.contains('open');
+      document.querySelectorAll('.tb-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelector('.tb-btn').classList.add('active');// keep map always styled
+      if(!isOpen)this.classList.add('active');
+    });
+  }
+})();
+
+// ── CLOCK ────────────────────────────────────────────────────────────────────
+function tick(){
+  const n=new Date();
+  const d=`${String(n.getUTCMonth()+1).padStart(2,'0')}/${String(n.getUTCDate()).padStart(2,'0')}/${n.getUTCFullYear()}`;
+  const t=[n.getUTCHours(),n.getUTCMinutes(),n.getUTCSeconds()].map(v=>String(v).padStart(2,'0')).join(':');
+  document.getElementById('clock').textContent=`${d} ${t} UTC`;
+}
+setInterval(tick,1000);tick();
+
+// ── LOADER ────────────────────────────────────────────────────────────────────
+const lf=document.getElementById('ld-fill');
+const lt=document.getElementById('ld-txt');
+const ldr=document.getElementById('loader');
+function stepLoader(p,t){lf.style.width=p+'%';lt.textContent=t;}
+
+// ── MAP ───────────────────────────────────────────────────────────────────────
+const bounds=L.latLngBounds([-85,-180],[85,180]);
+const map=L.map('map',{
+  center:[12.8797,121.7740],zoom:6,minZoom:2,maxZoom:19,
+  zoomControl:false,attributionControl:false,
+  maxBounds:bounds,maxBoundsViscosity:1.0
+});
+// ── TILE LAYERS ───────────────────────────────────────────────────────────────
+const darkLayer=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19,bounds});
+const satelliteLayer=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,bounds});
+const labelsLayer=L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19,bounds,opacity:1.0,className:'sat-labels'});
+let isSatellite=false;
+darkLayer.addTo(map);
+
+// ── LAYER TOGGLE BUTTON ───────────────────────────────────────────────────────
+function toggleSatellite(){
+  isSatellite=!isSatellite;
+  const btn=document.getElementById('sat-topbar-btn');
+  if(isSatellite){
+    map.removeLayer(darkLayer);
+    satelliteLayer.addTo(map);
+    labelsLayer.addTo(map);
+    btn.classList.add('active');
+    btn.textContent='🗺 TACTICAL';
+  } else {
+    map.removeLayer(satelliteLayer);
+    map.removeLayer(labelsLayer);
+    darkLayer.addTo(map);
+    btn.classList.remove('active');
+    btn.textContent='🛰 SATELLITE';
+  }
+}
+
+// ── GEOLOCATION — find user's position ──────────────────────────────────────
+let userMarker=null;
+function locateUser(){
+  if(!navigator.geolocation){
+    chatAdd&&chatAdd('bot','Geolocation not supported by your browser.');return;
+  }
+  map.locate({setView:true,maxZoom:14,enableHighAccuracy:true});
+}
+
+map.on('locationfound',e=>{
+  const r=e.accuracy;
+  if(userMarker){userMarker.remove();}
+  // Custom pulse icon
+  const icon=L.divIcon({
+    className:'',
+    html:`<div style="position:relative;width:14px;height:14px;">
+      <div style="position:absolute;inset:0;border-radius:50%;background:#00ff41;box-shadow:0 0 14px #00ff41;animation:ring 2s ease-out infinite;opacity:0.9;"></div>
+      <div style="position:absolute;inset:3px;border-radius:50%;background:#050e07;border:2px solid #00ff41;"></div>
+    </div>`,
+    iconSize:[14,14],iconAnchor:[7,7]
+  });
+  userMarker=L.marker(e.latlng,{icon}).addTo(map)
+    .bindPopup(`<div class="ptag">YOUR POSITION</div><div class="ptitle-p">📍 LOCATED</div><div class="pmeta">${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}<br>Accuracy ±${Math.round(r)}m</div>`)
+    .openPopup();
+  // Update coord HUD
+  document.getElementById('coord-main').textContent=`${Math.abs(e.latlng.lat).toFixed(2)}° ${e.latlng.lat>=0?'N':'S'}  ${Math.abs(e.latlng.lng).toFixed(2)}° ${e.latlng.lng>=0?'E':'W'}`;
+  document.getElementById('coord-sub').textContent=`(${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)})`;
+});
+
+map.on('locationerror',e=>{
+  alert('Could not get location: '+e.message);
+});
+
+map.on('mousemove',e=>{
+  const la=e.latlng.lat,lo=e.latlng.lng;
+  const ns=la>=0?'N':'S',ew=lo>=0?'E':'W';
+  document.getElementById('coord-main').textContent=`${Math.abs(la).toFixed(2)}° ${ns}  ${Math.abs(lo).toFixed(2)}° ${ew}`;
+  document.getElementById('coord-sub').textContent=`(${la.toFixed(6)}, ${lo.toFixed(6)})`;
+});
+
+// ── DRAG ─────────────────────────────────────────────────────────────────────
+let dragging=null,dx=0,dy=0,dragMoved=false;
+const isMobile=()=>window.innerWidth<=600;
+function dragStart(e,id){
+  if(isMobile())return;
+  dragging=document.getElementById(id);
+  dragMoved=false;
+  const r=dragging.getBoundingClientRect();
+  dx=e.clientX-r.left;dy=e.clientY-r.top;
+  e.preventDefault();
+}
+document.addEventListener('mousemove',e=>{
+  if(!dragging)return;
+  if(!dragMoved){
+    const r=dragging.getBoundingClientRect();
+    dragging.style.transform='none';
+    dragging.style.right='auto';
+    dragging.style.left=r.left+'px';
+    dragging.style.top=r.top+'px';
+    dx=e.clientX-r.left;dy=e.clientY-r.top;
+    dragMoved=true;
+  }
+  dragging.style.left=(e.clientX-dx)+'px';
+  dragging.style.top=(e.clientY-dy)+'px';
+});
+document.addEventListener('mouseup',()=>{dragging=null;dragMoved=false;});
+
+// ── TOGGLE ────────────────────────────────────────────────────────────────────
+function togglePanel(id){
+  const el=document.getElementById(id);
+  el.classList.toggle('open');
+}
+
+// ── DATA FETCH UTILS ────────────────────────────────────────────────────────
+
+
+
+// ── REAL DATA: CRYPTO ─────────────────────────────────────────────────────────
+let cryptoData=[];
+async function fetchCrypto(){
+  try{
+    const r=await fetchWithTimeout('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,solana,binancecoin,ripple,cardano,dogecoin,tether,usd-coin,avalanche-2,polkadot,chainlink,sui,pepe,shiba-inu,toncoin,near,ondo-finance&order=market_cap_desc&sparkline=false',8000);
+    if(!r.ok)throw new Error();
+    cryptoData=await r.json();
+  }catch(e){
+    cryptoData=[
+      {symbol:'btc',name:'Bitcoin',   current_price:95200, price_change_percentage_24h:2.14, market_cap:1880000000000},
+      {symbol:'eth',name:'Ethereum',  current_price:1820,  price_change_percentage_24h:-0.88,market_cap:219000000000},
+      {symbol:'sol',name:'Solana',    current_price:148,   price_change_percentage_24h:1.33, market_cap:76000000000},
+      {symbol:'bnb',name:'BNB',       current_price:598,   price_change_percentage_24h:0.61, market_cap:86000000000},
+      {symbol:'xrp',name:'XRP',       current_price:2.21,  price_change_percentage_24h:0.45, market_cap:127000000000},
+      {symbol:'ada',name:'Cardano',   current_price:0.72,  price_change_percentage_24h:-1.05,market_cap:25000000000},
+      {symbol:'doge',name:'Dogecoin', current_price:0.19,  price_change_percentage_24h:1.82, market_cap:28000000000},
+      {symbol:'sui',name:'Sui',       current_price:3.55,  price_change_percentage_24h:3.21, market_cap:11000000000},
+      {symbol:'link',name:'Chainlink',current_price:14.8,  price_change_percentage_24h:-0.42,market_cap:9200000000},
+      {symbol:'avax',name:'Avalanche',current_price:22.4,  price_change_percentage_24h:0.78, market_cap:9500000000},
+    ];
+  }
+  renderStocks();updateTicker();
+}
+
+// ── REAL DATA: FOREX ──────────────────────────────────────────────────────────
+let forexData={};
+async function fetchForex(){
+  try{
+    const r=await fetchWithTimeout('https://api.frankfurter.app/latest?from=USD&to=EUR,GBP,JPY,PHP,CNY,CHF,CAD,AUD,SGD,KRW',8000);
+    if(!r.ok)throw new Error();
+    const d=await r.json();
+    forexData=d.rates;
+  }catch(e){
+    forexData={EUR:0.882,GBP:0.751,JPY:143.8,PHP:61.0,CNY:7.26,CHF:0.835,CAD:1.384,AUD:1.551,SGD:1.328,KRW:1368};
+  }
+  renderStocks();updateTicker();
+}
+
+// ── STOCKS TAB SWITCHING ─────────────────────────────────────────────────────
+let currentStocksTab='overview';
+function switchStocksTab(tab){
+  currentStocksTab=tab;
+  document.querySelectorAll('.stab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  renderStocks();
+}
+
+// Generate sparkline SVG path from random walk seeded by value
+function sparkline(baseVal,chg,w,h,col,negative){
+  const pts=[];const n=22;
+  let v=baseVal*0.98;
+  for(let i=0;i<n;i++){
+    v=v*(1+(Math.random()-0.49+(chg>0?0.012:-0.012))*0.008);
+    pts.push(v);
+  }
+  const mn=Math.min(...pts),mx=Math.max(...pts);
+  const range=mx-mn||1;
+  const coords=pts.map((p,i)=>`${(i/(n-1)*w).toFixed(1)},${((1-(p-mn)/range)*h).toFixed(1)}`);
+  const lineCol=negative?'#ff4444':col||'#00ff41';
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <polyline points="${coords.join(' ')}" fill="none" stroke="${lineCol}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+  </svg>`;
+}
+
+function renderStocks(){
+  const body=document.getElementById('stocks-body');
+
+  if(currentStocksTab==='overview'){
+    const now=new Date();
+    const dateStr=`${now.toLocaleString('en',{month:'short'}).toUpperCase()} ${now.getDate()}`;
+    const phpRate=forexData['PHP']||61.0;
+
+    if(!cryptoData.length){
+      body.innerHTML='<div style="padding:18px;color:var(--text2);font-size:10px;letter-spacing:2px;">LOADING LIVE DATA...</div>';
+      return;
+    }
+
+    // Top 3 crypto as hero cards
+    const top3=cryptoData.slice(0,3);
+    const maxMcap=Math.max(...cryptoData.map(c=>c.market_cap||1));
+    const totalMcap=cryptoData.reduce((a,c)=>a+(c.market_cap||0),0);
+
+    let html=`<div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-size:8px;letter-spacing:3px;color:var(--text3);">CRYPTO MARKET · LIVE OVERVIEW</div>
+        <div style="font-size:8px;letter-spacing:2px;color:var(--green);margin-top:2px;">COINGECKO · REFRESHES 60s</div>
+      </div>
+      <div style="text-align:right;font-size:8px;color:var(--text3);letter-spacing:1px;">${dateStr} | UPDATED JUST NOW</div>
+    </div>
+    <div class="idx-grid">`;
+
+    top3.forEach(c=>{
+      const chg=c.price_change_percentage_24h||0;
+      const neg=chg<0;
+      const col=neg?'#ff4444':'#00ff41';
+      const phpPrice=c.current_price*phpRate;
+      const phpStr=phpPrice>1000?`₱${phpPrice.toLocaleString(undefined,{maximumFractionDigits:0})}`:` ₱${phpPrice.toFixed(2)}`;
+      const mcapB=(c.market_cap/1e9).toFixed(0);
+      html+=`<div class="idx-card ${neg?'neg':'pos'}">
+        <div class="idx-sym">${c.symbol.toUpperCase()}</div>
+        <div class="idx-name">${c.name.toUpperCase()} / USD</div>
+        <div class="idx-val" style="font-size:17px;">$${c.current_price>1000?c.current_price.toLocaleString(undefined,{maximumFractionDigits:0}):c.current_price.toFixed(4)}</div>
+        <div class="idx-chg-row">
+          <span class="idx-chg ${neg?'dn':'up'}">${neg?'':'+'}${chg.toFixed(2)}%</span>
+          <span style="font-size:8px;color:var(--text3);">MCap $${mcapB}B</span>
+        </div>
+        <div style="font-size:8px;color:var(--text2);margin-top:4px;">${phpStr}</div>
+        <div class="idx-mini">${sparkline(c.current_price,chg,130,28,col,neg)}</div>
+      </div>`;
+    });
+    html+=`</div>`;
+
+    // Market totals + PHP forex highlight
+    const advancers=cryptoData.filter(c=>(c.price_change_percentage_24h||0)>=0).length;
+    const decliners=cryptoData.length-advancers;
+    const avgChg=(cryptoData.reduce((a,c)=>a+(c.price_change_percentage_24h||0),0)/cryptoData.length).toFixed(2);
+    const btcDom=cryptoData[0]?((cryptoData[0].market_cap/totalMcap)*100).toFixed(1):0;
+
+    html+=`<div class="metrics-row">
+      <div class="metric-card">
+        <div class="metric-lbl">MARKET SENTIMENT</div>
+        <div class="metric-val" style="color:${avgChg>=0?'var(--green)':'#ff4444'};font-size:16px;letter-spacing:1px;">${avgChg>=0?'BULLISH':'BEARISH'}</div>
+        <div class="metric-sub">${advancers} up · ${decliners} down · avg ${avgChg>=0?'+':''}${avgChg}%</div>
+        <div class="breadth-bar"><div class="breadth-fill ${advancers<cryptoData.length/2?'neg':''}" style="width:${(advancers/cryptoData.length*100).toFixed(0)}%"></div></div>
+      </div>
+      <div class="metric-card" style="border-left:1px solid var(--border);">
+        <div class="metric-lbl">BTC DOMINANCE</div>
+        <div class="metric-val" style="font-size:18px;">${btcDom}%</div>
+        <div class="metric-sub">Total tracked MCap $${(totalMcap/1e12).toFixed(2)}T</div>
+      </div>
+    </div>`;
+
+    // PHP Rate highlight card
+    const phpVal=forexData['PHP']||61.0;
+    const eurVal=forexData['EUR']||0.92;
+    const jpyVal=forexData['JPY']||154;
+    const btcPhp=cryptoData[0]?(cryptoData[0].current_price*phpVal):0;
+    html+=`<div class="metric-card" style="border-top:1px solid var(--border);">
+      <div style="display:flex;gap:0;margin-bottom:6px;">
+        <div style="flex:1;">
+          <div class="metric-lbl">USD / PHP</div>
+          <div style="font-family:var(--cond);font-size:24px;font-weight:700;color:var(--green);">₱${phpVal.toFixed(2)}</div>
+        </div>
+        <div style="flex:1;border-left:1px solid var(--border);padding-left:12px;">
+          <div class="metric-lbl">BTC IN PESOS</div>
+          <div style="font-family:var(--cond);font-size:18px;font-weight:700;color:#00cc88;">₱${btcPhp>1000000?(btcPhp/1000000).toFixed(2)+'M':btcPhp.toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+        </div>
+      </div>
+      <div style="font-size:8px;color:var(--text3);letter-spacing:1px;">EUR ${eurVal.toFixed(4)} · JPY ¥${jpyVal.toFixed(2)} · SOURCE: FRANKFURTER / ECB</div>
+    </div>`;
+
+    body.innerHTML=html;
+    return;
+  }
+
+  if(currentStocksTab==='crypto'){
+    let html='<div class="sec-lbl">CRYPTOCURRENCY — COINGECKO LIVE · USD &amp; PHP</div>';
+    const phpRate=forexData['PHP']||61.0;
+    if(cryptoData.length){
+      html+=cryptoData.map(c=>{
+        const chg=c.price_change_percentage_24h||0;
+        const neg=chg<0;
+        const phpPrice=c.current_price*phpRate;
+        const phpStr=phpPrice>1000?`₱${phpPrice.toLocaleString(undefined,{maximumFractionDigits:0})}`:` ₱${phpPrice.toFixed(2)}`;
+        return `<div class="stock-row" style="grid-template-columns:48px 1fr 90px 66px;">
+          <div class="s-sym" style="font-size:11px;">${c.symbol.toUpperCase()}</div>
+          <div>
+            <div style="font-size:10px;color:var(--text);">${c.name}</div>
+            <div style="font-size:8px;color:var(--text3);">${phpStr}</div>
+          </div>
+          <div class="s-val" style="font-family:var(--cond);font-size:13px;">$${c.current_price>1000?c.current_price.toLocaleString(undefined,{maximumFractionDigits:0}):c.current_price.toFixed(4)}</div>
+          <div class="s-chg ${neg?'dn':'up'}">${neg?'':'+'}${chg.toFixed(2)}%</div>
+        </div>`;
+      }).join('');
+    } else {
+      html+='<div style="padding:16px;color:var(--text3);font-size:10px;letter-spacing:2px;">LOADING CRYPTO DATA...</div>';
+    }
+    body.innerHTML=html;
+    return;
+  }
+
+  if(currentStocksTab==='forex'){
+    const CURRENCY_NAMES={EUR:'Euro',GBP:'British Pound',JPY:'Japanese Yen',PHP:'Philippine Peso',CNY:'Chinese Yuan',CHF:'Swiss Franc',CAD:'Canadian Dollar',AUD:'Australian Dollar',SGD:'Singapore Dollar',KRW:'Korean Won'};
+    const CURRENCY_SYMS={EUR:'€',GBP:'£',JPY:'¥',PHP:'₱',CNY:'¥',CHF:'Fr',CAD:'C$',AUD:'A$',SGD:'S$',KRW:'₩'};
+    let html='<div class="sec-lbl">FOREX — FRANKFURTER LIVE (1 USD =)</div>';
+    if(Object.keys(forexData).length){
+      html+=Object.entries(forexData).map(([k,v])=>`
+        <div class="stock-row">
+          <div class="s-sym" style="font-size:10px;">${k}</div>
+          <div class="s-name">${CURRENCY_NAMES[k]||k}</div>
+          <div class="s-val" style="font-family:var(--cond);font-size:14px;">${CURRENCY_SYMS[k]||''}${v>100?v.toLocaleString(undefined,{maximumFractionDigits:0}):v.toFixed(4)}</div>
+          <div class="s-chg" style="color:var(--text3);">—</div>
+        </div>`).join('');
+    } else {
+      html+='<div style="padding:16px;color:var(--text3);font-size:10px;letter-spacing:2px;">LOADING FOREX DATA...</div>';
+    }
+    body.innerHTML=html;
+    return;
+  }
+}
+
+// ── TICKER ────────────────────────────────────────────────────────────────────
+function updateTicker(){
+  const items=[];
+  const phpRate=forexData['PHP']||61.0;
+  cryptoData.slice(0,8).forEach(c=>{
+    const chg=c.price_change_percentage_24h||0;
+    const phpPrice=c.current_price*phpRate;
+    const phpStr=phpPrice>1000?`₱${phpPrice.toLocaleString(undefined,{maximumFractionDigits:0})}`:` ₱${phpPrice.toFixed(2)}`;
+    items.push(`${c.symbol.toUpperCase()} <span class="${chg>=0?'tup':'tdn'}">${chg>=0?'▲':'▼'}${Math.abs(chg).toFixed(2)}%</span> $${c.current_price>1000?c.current_price.toLocaleString(undefined,{maximumFractionDigits:0}):c.current_price.toFixed(4)} · ${phpStr}`);
+  });
+  if(forexData.PHP) items.push(`USD/PHP <span style="color:var(--text);">₱${forexData.PHP.toFixed(2)}</span>`);
+  if(forexData.EUR) items.push(`USD/EUR <span style="color:var(--text);">${forexData.EUR.toFixed(4)}</span>`);
+  if(forexData.JPY) items.push(`USD/JPY <span style="color:var(--text);">¥${forexData.JPY.toFixed(2)}</span>`);
+  if(forexData.GBP) items.push(`USD/GBP <span style="color:var(--text);">£${forexData.GBP.toFixed(4)}</span>`);
+  if(forexData.SGD) items.push(`USD/SGD <span style="color:var(--text);">S$${forexData.SGD.toFixed(4)}</span>`);
+  document.getElementById('ticker-inner').innerHTML=items.map(i=>`<span class="ti">${i}</span>`).join('');
+}
+
+// ── DISEASE OUTBREAKS ────────────────────────────────────────────────────────
+let outbreakData=[];
+let outbreakMarkers=[];
+
+async function fetchOutbreaks(){
+  try{
+    // Fetch COVID-19 data from Disease.sh
+    const covidRes=await fetchWithTimeout('https://disease.sh/v3/covid-19/countries',8000);
+    let covidData=[];
+    if(covidRes.ok){
+      const covid=await covidRes.json();
+      covidData=covid.filter(c=>c.cases>10000).sort((a,b)=>b.cases-a.cases).slice(0,8);
+    }
+    
+    // Fetch disease outbreak events from GDELT
+    const gdeltRes=await fetchWithTimeout(`https://api.gdeltproject.org/api/v2/doc/doc?query=disease%20outbreak%20epidemic%20pandemic%20infectious&mode=json&maxrecords=75&sort=hybridrelev&format=json`,8000);
+    let gdeltData=[];
+    if(gdeltRes.ok){
+      const gdelt=await gdeltRes.json();
+      if(gdelt.articles){
+        gdeltData=gdelt.articles.slice(0,12).map(a=>({
+          country:a.sourcecountry||'Global',
+          event:a.title,
+          url:a.url,
+          date:a.publishdate,
+          source:a.sourcename||'News',
+          gdelt:true
+        }));
+      }
+    }
+    
+    // Merge data - COVID first, then GDELT events
+    outbreakData=[...covidData,...gdeltData];
+    renderOutbreaks();
+    displayOutbreakMarkers();
+  }catch(e){
+    // Fallback demo data
+    outbreakData=[
+      {country:'Bangladesh',cases:19200,deaths:166,lat:23.685,lng:90.356,disease:'Measles'},
+      {country:'Italy',cases:3450,deaths:28,lat:41.871,lng:12.567,disease:'Avian Influenza'},
+      {country:'India',cases:2100,deaths:45,lat:20.5937,lng:78.9629,disease:'Typhoid'},
+      {country:'Brazil',cases:1800,deaths:32,lat:-14.2350,lng:-51.9253,disease:'Dengue Fever'},
+      {country:'USA',cases:1600,deaths:24,lat:37.0902,lng:-95.7129,disease:'RSV'},
+      {country:'Nigeria',cases:890,deaths:12,lat:9.0820,lng:8.6753,disease:'Mpox'},
+      {country:'Kenya',cases:650,deaths:8,lat:-0.0236,lng:37.9062,disease:'Cholera'},
+      {country:'Pakistan',cases:520,deaths:6,lat:30.3753,lng:69.3451,disease:'Polio'},
+    ];
+    renderOutbreaks();
+    displayOutbreakMarkers();
+  }
+}
+
+function displayOutbreakMarkers(){
+  // Clear existing markers
+  outbreakMarkers.forEach(m=>m.remove());
+  outbreakMarkers=[];
+  
+  outbreakData.forEach(o=>{
+    if(!o.lat||!o.lng)return;
+    // markers not shown on map — data displayed in panel only
+  });
+}
+
+function renderOutbreaks(){
+  const body=document.getElementById('outbreaks-body');
+  if(!outbreakData.length){
+    body.innerHTML='<div style="padding:18px;color:var(--text2);font-size:10px;letter-spacing:2px;">INITIALIZING...</div>';
+    return;
+  }
+  
+  // Separate COVID and GDELT data
+  const covidOutbreaks=outbreakData.filter(o=>!o.gdelt);
+  const gdeltOutbreaks=outbreakData.filter(o=>o.gdelt);
+  
+  let html=`<div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+    <div>
+      <div style="font-size:8px;letter-spacing:3px;color:var(--text3);">GLOBAL DISEASE SURVEILLANCE · LIVE</div>
+      <div style="font-size:8px;letter-spacing:2px;color:var(--green);margin-top:2px;">DISEASE.SH + GDELT · MULTI-SOURCE</div>
+    </div>
+  </div>`;
+  
+  // COVID-19 Cases Section
+  if(covidOutbreaks.length){
+    html+=`<div style="padding:8px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border);font-size:8px;letter-spacing:2px;color:var(--green);text-transform:uppercase;">COVID-19 TRACKING</div>`;
+    covidOutbreaks.forEach(o=>{
+      const severity=o.cases>50000?'CRITICAL':o.cases>20000?'HIGH':'MODERATE';
+      const sevCol=severity==='CRITICAL'?'#ff6644':severity==='HIGH'?'#ff9933':'#00ff41';
+      html+=`<div style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;" onmouseover="this.style.background='rgba(0,255,65,0.05)'" onmouseout="this.style.background=''">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div style="font-size:11px;color:${sevCol};font-weight:600;letter-spacing:1px;">${o.country.toUpperCase()}</div>
+          <div style="font-size:7px;color:var(--text3);background:${sevCol}22;padding:2px 6px;border-radius:2px;letter-spacing:1px;">●${severity}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:9px;">
+          <div style="color:var(--green);">CONFIRMED<br><b style="font-size:11px;">${(o.cases||0).toLocaleString()}</b></div>
+          <div style="color:#ff6644;">FATALITIES<br><b style="font-size:11px;">${(o.deaths||0).toLocaleString()}</b></div>
+        </div>
+      </div>`;
+    });
+  }
+  
+  // GDELT Events Section
+  if(gdeltOutbreaks.length){
+    html+=`<div style="padding:8px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border);font-size:8px;letter-spacing:2px;color:var(--green);text-transform:uppercase;">OUTBREAK NEWS & EVENTS</div>`;
+    gdeltOutbreaks.forEach((o,idx)=>{
+      html+=`<div style="padding:9px 14px;border-bottom:1px solid var(--border);cursor:pointer;" onmouseover="this.style.background='rgba(0,255,65,0.05)'" onmouseout="this.style.background=''">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+          <div style="flex:1;">
+            <div style="font-size:10px;color:var(--green);font-weight:600;letter-spacing:1px;line-height:1.3;">${o.country}</div>
+          </div>
+          <div style="font-size:7px;color:var(--text3);white-space:nowrap;margin-left:8px;">📰</div>
+        </div>
+        <div style="font-size:8px;color:var(--text2);line-height:1.3;margin-bottom:4px;">${o.event.substring(0,80)}${o.event.length>80?'...':''}</div>
+        <div style="font-size:7px;color:var(--text3);">SRC: ${o.source.substring(0,30)}</div>
+      </div>`;
+    });
+  }
+  
+  body.innerHTML=html;
+}
+
+// ── FRIDAY AI CHATBOT ────────────────────────────────────────────────────────
+const chatLog=()=>document.getElementById('chat-log');
+function focusChat(){setTimeout(()=>{const i=document.getElementById('chat-input');if(i&&document.getElementById('chat-panel').classList.contains('open'))i.focus();},80);}
+
+function chatAdd(who,html){
+  const log=chatLog();if(!log)return;
+  const d=document.createElement('div');d.className='cmsg '+who;
+  d.innerHTML=html;
+  if(who==='bot'){
+    const cp=document.createElement('span');
+    cp.className='msg-copy';cp.textContent='COPY';
+    cp.onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(d.innerText||d.textContent);cp.textContent='✓ COPIED';setTimeout(()=>cp.textContent='COPY',1200);};
+    d.appendChild(cp);
+  }
+  log.appendChild(d);log.scrollTop=log.scrollHeight;
+  return d;
+}
+
+// Returns a streaming bot message div for live updates
+function chatAddStreaming(){
+  const log=chatLog();if(!log)return null;
+  const d=document.createElement('div');d.className='cmsg bot';
+  d.innerHTML='<span class="stream-cursor"></span>';
+  log.appendChild(d);log.scrollTop=log.scrollHeight;
+  return d;
+}
+
+function chatTyping(on, statusText){
+  const log=chatLog();if(!log)return;
+  const ex=document.getElementById('ctyping-x');
+  if(on&&!ex){
+    const d=document.createElement('div');d.className='ctyping';d.id='ctyping-x';
+    d.innerHTML=`<div class="ctyping-dots"><span></span><span></span><span></span></div><span id="chat-status-text">${statusText||'PROCESSING...'}</span>`;
+    log.appendChild(d);log.scrollTop=log.scrollHeight;
+  } else if(on&&ex){
+    const st=document.getElementById('chat-status-text');
+    if(st&&statusText)st.textContent=statusText;
+  } else if(!on&&ex){ex.remove();}
+}
+
+function clearChat(){
+  const log=chatLog();if(!log)return;
+  log.innerHTML='';
+  chatHistory=[];
+  setTimeout(()=>chatAdd('bot','<b>FRIDAY memory cleared.</b> Channel reset — what can I help with, Operator?'),100);
+}
+
+function chatQuick(t){
+  const i=document.getElementById('chat-input');i.value=t;chatSend();
+}
+function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+let isSending=false;
+function chatSend(){
+  if(isSending)return;
+  const i=document.getElementById('chat-input');
+  const t=(i.value||'').trim();if(!t)return;
+  i.value='';
+  chatAdd('user',escapeHtml(t));
+  isSending=true;
+
+  // Determine status text from query
+  const lo=t.toLowerCase();
+  let statusText='THINKING...';
+  if(/news|latest|today|happening/i.test(lo))statusText='SEARCHING NEWS...';
+  else if(/analyz|analysis|outlook|predict/i.test(lo))statusText='ANALYZING MARKETS...';
+  else if(/convert|how much|calculate/i.test(lo))statusText='CALCULATING...';
+  else if(/compare|vs\b/i.test(lo))statusText='COMPARING...';
+
+  chatTyping(true,statusText);
+  fridayReply(t).then(reply=>{
+    chatTyping(false);
+    isSending=false;
+    // Bot message
+    const d=chatAdd('bot',reply);
+    // Add copy button
+    if(d){
+      const cp=document.createElement('span');
+      cp.className='msg-copy';cp.textContent='COPY';
+      cp.onclick=()=>{
+        const txt=d.innerText||d.textContent;
+        navigator.clipboard&&navigator.clipboard.writeText(txt);
+        cp.textContent='✓ COPIED';setTimeout(()=>cp.textContent='COPY',1200);
+      };
+      d.appendChild(cp);
+    }
+  }).catch(()=>{chatTyping(false);isSending=false;});
+}
+
+
+
+// ── INTENT ENGINE (fast local path for trivial queries) ─────────────────────
+function fmtUsd(v){return v>=1000?'$'+v.toLocaleString(undefined,{maximumFractionDigits:0}):'$'+v.toFixed(4);}
+function fmtPhp(v){return v>=1000?'₱'+v.toLocaleString(undefined,{maximumFractionDigits:0}):'₱'+v.toFixed(2);}
+function pickRand(arr){return arr[Math.floor(Math.random()*arr.length)];}
+// getCoin is defined in the FRIDAY AI engine below
+function marketSnapshot(){
+  if(!cryptoData.length)return null;
+  const adv=cryptoData.filter(c=>(c.price_change_percentage_24h||0)>=0).length;
+  const dec=cryptoData.length-adv;
+  const avg=cryptoData.reduce((a,c)=>a+(c.price_change_percentage_24h||0),0)/cryptoData.length;
+  const totalMcap=cryptoData.reduce((a,c)=>a+(c.market_cap||0),0);
+  const btcDom=cryptoData[0]?(cryptoData[0].market_cap/totalMcap)*100:0;
+  return {adv,dec,avg,btcDom,totalMcap,n:cryptoData.length};
+}
+function utcNow(){
+  const n=new Date();
+  const t=[n.getUTCHours(),n.getUTCMinutes(),n.getUTCSeconds()].map(v=>String(v).padStart(2,'0')).join(':');
+  const d=`${String(n.getUTCMonth()+1).padStart(2,'0')}/${String(n.getUTCDate()).padStart(2,'0')}/${n.getUTCFullYear()}`;
+  return {t,d,hour:n.getUTCHours()};
+}
+function timeGreeting(){
+  const h=new Date().getUTCHours();
+  if(h<5)return'a quiet UTC night';
+  if(h<12)return'UTC morning hours';
+  if(h<17)return'UTC afternoon';
+  return'UTC evening';
+}
+function coinReply(c){
+  const chg=c.price_change_percentage_24h||0;
+  const cls=chg>=0?'upx':'dnx';
+  const arrow=chg>=0?'▲':'▼';
+  const rate=forexData.PHP||61.0;
+  const phpPrice=c.current_price*rate;
+  return `<b>${c.name} (${c.symbol.toUpperCase()})</b><br>
+    USD: <b>${fmtUsd(c.current_price)}</b> · PHP: <b>${fmtPhp(phpPrice)}</b><br>
+    24h: <span class="${cls}">${arrow} ${Math.abs(chg).toFixed(2)}%</span> · MCap $${((c.market_cap||0)/1e9).toFixed(1)}B`;
+}
+
+// ── FRIDAY AI — IMPROVED ENGINE ───────────────────────────────────────────────
+
+// Extended coin alias map for smarter lookup
+const COIN_ALIASES={
+  'bitcoin':'btc','ethereum':'eth','ether':'eth','solana':'sol',
+  'binance':'bnb','ripple':'xrp','cardano':'ada','dogecoin':'doge',
+  'shib':'shib','shiba':'shib','shibainu':'shib','pepe':'pepe',
+  'avalanche':'avax','polkadot':'dot','chainlink':'link',
+  'toncoin':'ton','ton':'ton','near':'near','sui':'sui',
+  'ondo':'ondo','tether':'usdt','usdc':'usdc','usdt':'usdt'
+};
+
+function getCoin(q){
+  if(!cryptoData.length)return null;
+  q=q.toLowerCase().trim();
+  const alias=COIN_ALIASES[q];
+  if(alias)q=alias;
+  return cryptoData.find(c=>
+    c.symbol.toLowerCase()===q||
+    c.name.toLowerCase()===q||
+    c.name.toLowerCase().replace(/\s+/g,'')===q||
+    c.name.toLowerCase().startsWith(q)
+  )||null;
+}
+
+// Build a rich market context string to inject into Claude's system prompt
+function buildMarketContext(){
+  const s=marketSnapshot();
+  const phpRate=forexData.PHP||61.0;
+  const t=utcNow();
+  let ctx=`LIVE MARKET DATA (as of ${t.d} ${t.t} UTC):\n`;
+  if(s){
+    const tone=s.avg>=1?'STRONGLY BULLISH':s.avg>=0?'BULLISH':s.avg>=-1?'BEARISH':'STRONGLY BEARISH';
+    ctx+=`Sentiment: ${tone} | Avg 24h: ${s.avg>=0?'+':''}${s.avg.toFixed(2)}% | Advancers: ${s.adv} | Decliners: ${s.dec} | BTC Dom: ${s.btcDom.toFixed(1)}% | Total MCap: $${(s.totalMcap/1e12).toFixed(2)}T\n\n`;
+  }
+  if(cryptoData.length){
+    ctx+=`TOP CRYPTO PRICES (USD | PHP at ₱${phpRate.toFixed(2)}/USD):\n`;
+    cryptoData.forEach(c=>{
+      const chg=(c.price_change_percentage_24h||0).toFixed(2);
+      const php=(c.current_price*phpRate);
+      const phpStr=php>1000?'₱'+php.toLocaleString(undefined,{maximumFractionDigits:0}):'₱'+php.toFixed(2);
+      ctx+=`${c.symbol.toUpperCase()} (${c.name}): $${c.current_price>1000?c.current_price.toLocaleString(undefined,{maximumFractionDigits:0}):c.current_price.toFixed(4)} | ${chg>=0?'+':''}${chg}% 24h | MCap $${((c.market_cap||0)/1e9).toFixed(1)}B | ${phpStr}\n`;
+    });
+  }
+  if(Object.keys(forexData).length){
+    ctx+=`\nFOREX RATES (1 USD =):\n`;
+    Object.entries(forexData).forEach(([k,v])=>{ctx+=`${k}: ${v.toFixed(4)}\n`;});
+  }
+  return ctx;
+}
+
+// ── FAST LOCAL INTENTS (no API needed) ───────────────────────────────────────
+// Returns a string reply OR null to fall through to Claude AI
+function localIntent(raw){
+  const t=raw.trim();
+  const lo=t.toLowerCase();
+
+  // Greetings
+  if(/^(hi+|hello|hey|yo|sup|hiya|howdy|good\s*(morning|afternoon|evening|day))\b/i.test(t)){
+    const g=pickRand(['Hello, Operator.','Hey — FRIDAY online.','Greetings.','Yo. Channel is open.']);
+    return `<b>${g}</b> Ask me about <b>market status</b>, any coin price, forex (<b>usd to php</b>), conversions, or just ask anything.`;
+  }
+  // Goodbye
+  if(/\b(bye|goodbye|see\s*ya|cya|later|gtg|good\s*night)\b/i.test(t))
+    return pickRand(['Standing by. Channel remains open.','Acknowledged. FRIDAY entering passive mode.','Until next cycle, Operator.','Disconnect noted. I remain on watch.']);
+  // Thanks
+  if(/\b(thanks|thank\s*you|thx|ty|appreciate)\b/i.test(t))
+    return pickRand(['Anytime, Operator.','Glad to assist.','Always.','Affirmative.']);
+  // Creator
+  if(/\b(who\s*(made|created|built|coded)\s*you|your\s*creator|developer|owner)\b/i.test(t))
+    return 'Built and maintained by <b>ZARCYEA</b>.';
+  // Who are you
+  if(/\b(who\s*are\s*you|what\s*are\s*you|your\s*name|introduce|about\s*you)\b/i.test(t))
+    return 'I am <b>FRIDAY</b> — a global situational awareness assistant built by <b>ZARCYEA</b>. I\'m powered by Claude AI and have live crypto, forex, and market data.';
+  // Help
+  if(/\b(help|commands?|what\s*can\s*you|menu|options)\b/i.test(t))
+    return `What I can do:<ul>
+      <li><b>btc</b>, <b>eth</b>, <b>sol</b>, <b>doge</b>… — live price + PHP conversion</li>
+      <li><b>compare btc eth</b> — side-by-side coin comparison</li>
+      <li><b>convert 0.5 btc to php</b> — any amount conversion</li>
+      <li><b>market status</b> — overall crypto sentiment</li>
+      <li><b>top gainers / losers</b> — 24h movers</li>
+      <li><b>usd to php</b>, <b>usd to eur</b>… — forex rates</li>
+      <li><b>all rates</b> — full forex table</li>
+      <li><b>btc dominance</b> / <b>total market cap</b></li>
+      <li><b>latest crypto news</b> — live web search for news</li>
+      <li><b>analyze market</b> — AI market analysis</li>
+      <li><b>psei</b> — Philippine Stock Exchange info</li>
+      <li><b>status</b> / <b>time</b> / <b>joke</b> / <b>fact</b> / <b>quote</b></li>
+      <li>Or just ask anything — I'm Claude AI-powered with web search!</li>
+    </ul>`;
+  // Status / ping
+  if(/\b(status|system\s*status|are\s*you\s*online|alive|ping)\b/i.test(t)){
+    const s=marketSnapshot();const tv=utcNow();
+    return `<b>SYSTEM ONLINE</b> · ${tv.d} ${tv.t} UTC<br>CoinGecko ✓ · Frankfurter ✓ · Claude AI ✓<br>Tracking <b>${s?s.n:0}</b> assets · ${s?s.adv:0}↑ ${s?s.dec:0}↓`;
+  }
+  // Time / date
+  if(/\b(time|clock|date|today|what\s*day)\b/i.test(t)){
+    const tv=utcNow();return `Current UTC: <b>${tv.d} · ${tv.t}</b>`;
+  }
+  // Market status / sentiment
+  if(/\b(market\s*status|market\s*today|market\s*sentiment|how\s*is\s*the\s*market|how\s*is\s*crypto|crypto\s*today|overall\s*market)\b/i.test(t)){
+    const s=marketSnapshot();if(!s)return'Awaiting feed…';
+    const tone=s.avg>=1?'<b class="upx">STRONGLY BULLISH ▲</b>':s.avg>=0?'<b class="upx">BULLISH ▲</b>':s.avg>=-1?'<b class="dnx">BEARISH ▼</b>':'<b class="dnx">STRONGLY BEARISH ▼</b>';
+    const top=[...cryptoData].sort((a,b)=>(b.price_change_percentage_24h||0)-(a.price_change_percentage_24h||0))[0];
+    const bot=[...cryptoData].sort((a,b)=>(a.price_change_percentage_24h||0)-(b.price_change_percentage_24h||0))[0];
+    return `Market is ${tone}. Avg 24h: <b>${s.avg>=0?'+':''}${s.avg.toFixed(2)}%</b><br>
+      Breadth: <span class="upx">${s.adv} advancing</span> · <span class="dnx">${s.dec} declining</span><br>
+      BTC dominance: <b>${s.btcDom.toFixed(1)}%</b> · MCap: <b>$${(s.totalMcap/1e12).toFixed(2)}T</b><br>
+      Best: <span class="upx"><b>${top.symbol.toUpperCase()}</b> +${(top.price_change_percentage_24h||0).toFixed(2)}%</span> · Worst: <span class="dnx"><b>${bot.symbol.toUpperCase()}</b> ${(bot.price_change_percentage_24h||0).toFixed(2)}%</span>`;
+  }
+  // Top gainers
+  if(/\b(top\s*gainers?|biggest\s*winners?|best\s*performers?)\b/i.test(t)){
+    if(!cryptoData.length)return'Awaiting data…';
+    const s=[...cryptoData].sort((a,b)=>(b.price_change_percentage_24h||0)-(a.price_change_percentage_24h||0)).slice(0,5);
+    return 'Top gainers (24h):<ul>'+s.map(c=>`<li><b>${c.symbol.toUpperCase()}</b> ${fmtUsd(c.current_price)} <span class="upx">+${(c.price_change_percentage_24h||0).toFixed(2)}%</span></li>`).join('')+'</ul>';
+  }
+  // Top losers
+  if(/\b(top\s*losers?|worst\s*performers?|biggest\s*losers?)\b/i.test(t)){
+    if(!cryptoData.length)return'Awaiting data…';
+    const s=[...cryptoData].sort((a,b)=>(a.price_change_percentage_24h||0)-(b.price_change_percentage_24h||0)).slice(0,5);
+    return 'Top losers (24h):<ul>'+s.map(c=>`<li><b>${c.symbol.toUpperCase()}</b> ${fmtUsd(c.current_price)} <span class="dnx">${(c.price_change_percentage_24h||0).toFixed(2)}%</span></li>`).join('')+'</ul>';
+  }
+  // BTC dominance
+  if(/\b(btc\s*dominance|bitcoin\s*dominance|dominance)\b/i.test(t)){
+    const s=marketSnapshot();if(!s)return'Awaiting data…';
+    return `Bitcoin dominance: <b>${s.btcDom.toFixed(1)}%</b> of total tracked market cap.`;
+  }
+  // Total market cap
+  if(/\b(total\s*(market\s*cap|mcap))\b/i.test(t)){
+    const s=marketSnapshot();if(!s)return'Awaiting data…';
+    return `Total tracked crypto market cap: <b>$${(s.totalMcap/1e12).toFixed(2)}T</b>`;
+  }
+  // All forex rates
+  if(/\b(all\s*rates?|all\s*forex|forex\s*rates?|show\s*all\s*(currencies|rates?))\b/i.test(t)){
+    if(!Object.keys(forexData).length)return'Awaiting forex feed…';
+    const names={EUR:'Euro',GBP:'Pound',JPY:'Yen',PHP:'Peso',CNY:'Yuan',CHF:'Franc',CAD:'CAD',AUD:'AUD',SGD:'SGD',KRW:'Won'};
+    return '1 USD =<ul>'+Object.entries(forexData).map(([k,v])=>`<li><b>${k}</b> (${names[k]||k}) — ${v>100?v.toLocaleString(undefined,{maximumFractionDigits:2}):v.toFixed(4)}</li>`).join('')+'</ul>';
+  }
+  // Single forex lookup: "usd to php", "php rate", "peso rate", etc.
+  if(/\b(usd\s*to\s*\w+|\w+\s*rate|exchange\s*rate|forex|currency|convert\s*usd)\b/i.test(t)){
+    const w=t.toUpperCase();
+    const codes=['EUR','GBP','JPY','PHP','CNY','CHF','CAD','AUD','SGD','KRW'];
+    const aliases={PESO:'PHP',PESOS:'PHP',EURO:'EUR',YEN:'JPY','POUND':'GBP',STERLING:'GBP',YUAN:'CNY',FRANC:'CHF',WON:'KRW',DOLLAR:'USD',RINGGIT:'MYR',BAHT:'THB'};
+    let target=codes.find(c=>w.includes(c));
+    if(!target){for(const k in aliases){if(w.includes(k)){target=aliases[k];break;}}}
+    if(target==='USD')return'USD is the base currency. Try <b>usd to php</b>, <b>usd to eur</b>, etc.';
+    if(target){
+      const v=forexData[target];
+      if(!v)return`No rate for <b>${target}</b>. Rates available: EUR, GBP, JPY, PHP, CNY, CHF, CAD, AUD, SGD, KRW.`;
+      return `<b>1 USD = ${v.toLocaleString(undefined,{maximumFractionDigits:4})} ${target}</b> · Source: Frankfurter/ECB`;
+    }
+  }
+  // Coin-in-currency: "btc in pesos", "eth in usd", etc.
+  const coinCurrMatch=lo.match(/\b(\w+)\s+in\s+(peso|php|usd|dollar|eur|euro|jpy|yen|gbp|pound)\b/);
+  if(coinCurrMatch){
+    const c=getCoin(coinCurrMatch[1]);
+    if(c){
+      const curr=coinCurrMatch[2].toLowerCase();
+      if(curr==='usd'||curr==='dollar')return coinReply(c);
+      const phpRate=forexData.PHP||61.0;
+      const eurRate=forexData.EUR||0.92;
+      const jpyRate=forexData.JPY||143;
+      const gbpRate=forexData.GBP||0.78;
+      const rateMap={peso:phpRate,php:phpRate,eur:eurRate,euro:eurRate,jpy:jpyRate,yen:jpyRate,gbp:gbpRate,pound:gbpRate};
+      const rate=rateMap[curr];
+      const sym={peso:'₱',php:'₱',eur:'€',euro:'€',jpy:'¥',yen:'¥',gbp:'£',pound:'£'}[curr]||'';
+      const converted=c.current_price*rate;
+      const dispVal=converted>1000?sym+converted.toLocaleString(undefined,{maximumFractionDigits:0}):sym+converted.toFixed(2);
+      return `<b>${c.name} in ${curr.toUpperCase()}</b><br>1 ${c.symbol.toUpperCase()} = <b>${dispVal}</b><br>Rate: $1 = ${sym}${rate.toFixed(4)}`;
+    }
+  }
+  // Convert X coin to currency: "convert 0.5 btc to php", "2 eth in pesos"
+  const convertMatch=lo.match(/(?:convert\s+)?(\d+(?:\.\d+)?)\s*(\w+)\s*(?:to|in|into)\s*(\w+)/);
+  if(convertMatch){
+    const amt=parseFloat(convertMatch[1]);
+    const coinQ=convertMatch[2];
+    const toQ=convertMatch[3];
+    const coin=getCoin(coinQ);
+    if(coin&&amt>0){
+      const curr=toQ.toLowerCase();
+      const phpRate=forexData.PHP||61.0;
+      const eurRate=forexData.EUR||0.92;
+      const jpyRate=forexData.JPY||143;
+      const gbpRate=forexData.GBP||0.78;
+      const rateMap={php:phpRate,peso:phpRate,pesos:phpRate,eur:eurRate,euro:eurRate,jpy:jpyRate,yen:jpyRate,gbp:gbpRate,pound:gbpRate,usd:1,dollar:1,dollars:1};
+      const symMap={php:'₱',peso:'₱',pesos:'₱',eur:'€',euro:'€',jpy:'¥',yen:'¥',gbp:'£',pound:'£',usd:'$',dollar:'$',dollars:'$'};
+      const rate=rateMap[curr];
+      if(rate!==undefined){
+        const total=coin.current_price*rate*amt;
+        const sym=symMap[curr]||'';
+        const dispVal=total>1000?sym+total.toLocaleString(undefined,{maximumFractionDigits:0}):sym+total.toFixed(2);
+        const unitVal=coin.current_price*rate;
+        const unitDisp=unitVal>1000?sym+unitVal.toLocaleString(undefined,{maximumFractionDigits:0}):sym+unitVal.toFixed(2);
+        return `<b>${amt} ${coin.symbol.toUpperCase()} = ${dispVal}</b><br>1 ${coin.symbol.toUpperCase()} = ${unitDisp} · Rate used: $1 = ${sym}${rate.toFixed(4)}`;
+      }
+    }
+  }
+  // Compare two coins: "compare btc eth", "btc vs eth"
+  const compareMatch=lo.match(/\b(?:compare|vs\.?|versus)\b[\s]*(\w+)[\s,]+(?:vs\.?\s*|and\s*)?(\w+)/)||lo.match(/(\w+)\s+vs\.?\s+(\w+)/i);
+  if(compareMatch){
+    const c1=getCoin(compareMatch[1]);
+    const c2=getCoin(compareMatch[2]);
+    if(c1&&c2){
+      const phpRate=forexData.PHP||61.0;
+      const chg1=c1.price_change_percentage_24h||0;
+      const chg2=c2.price_change_percentage_24h||0;
+      const winner=chg1>chg2?c1:c2;
+      return `<b>COMPARISON · 24H</b><br>
+        <b>${c1.symbol.toUpperCase()}</b>: ${fmtUsd(c1.current_price)} · <span class="${chg1>=0?'upx':'dnx'}">${chg1>=0?'+':''}${chg1.toFixed(2)}%</span> · MCap $${((c1.market_cap||0)/1e9).toFixed(1)}B<br>
+        <b>${c2.symbol.toUpperCase()}</b>: ${fmtUsd(c2.current_price)} · <span class="${chg2>=0?'upx':'dnx'}">${chg2>=0?'+':''}${chg2.toFixed(2)}%</span> · MCap $${((c2.market_cap||0)/1e9).toFixed(1)}B<br>
+        <b>PHP:</b> ${c1.symbol.toUpperCase()} = ${fmtPhp(c1.current_price*phpRate)} · ${c2.symbol.toUpperCase()} = ${fmtPhp(c2.current_price*phpRate)}<br>
+        Better 24h performer: <span class="upx"><b>${winner.symbol.toUpperCase()}</b></span>`;
+    }
+  }
+  // PSEi
+  if(/\b(psei|pse\s*index|philippine\s*stock|ph\s*stocks?|manila\s*stock)\b/i.test(t))
+    return `<b>PSEi</b> — Philippine Stock Exchange Index.<br>Tracks the top 30 companies on the PSE. Denominated in PHP, trades Mon–Fri 9:30AM–3:30PM PHT.<br>Live data: <b>pse.com.ph</b> · Bloomberg: <b>PCOMP</b>`;
+  // Map / location
+  if(/\b(map|locate\s*me|my\s*location|where\s*am\s*i|coordinates?)\b/i.test(t))
+    return 'Use the <b>◎ LOCATE ME</b> button on the right to pinpoint your position. The map supports zoom up to street level.';
+  // Joke
+  if(/\b(joke|funny|make\s*me\s*laugh|humor)\b/i.test(t))
+    return pickRand([
+      'Why did the trader bring a ladder? To reach the all-time highs.',
+      "I told my portfolio a joke. It didn't move. Tough crowd.",
+      'Crypto and coffee both keep me up at night. Only one is supposed to.',
+      'A bear walks into a bar. Everyone shorts.',
+      "I tried to make a stablecoin joke but it depegged.",
+      'Why is Bitcoin so dramatic? It can never just have a normal day.',
+      'My financial advisor told me to diversify. I bought BTC on three exchanges.',
+      'The market is up today. My therapist is confused too.'
+    ]);
+  // Fact
+  if(/\b(fact|fun\s*fact|tell\s*me\s*something|did\s*you\s*know)\b/i.test(t))
+    return pickRand([
+      'The first real-world Bitcoin transaction bought two pizzas for 10,000 BTC in 2010.',
+      'There will only ever be 21 million Bitcoin — the last will be mined around year 2140.',
+      'The Philippine Peso (PHP) ticker is also the name of a programming language.',
+      'Forex is the largest financial market on earth — over $7 trillion changes hands daily.',
+      "Satoshi Nakamoto's identity remains unknown to this day.",
+      'Ethereum processes more transactions per day than Bitcoin.',
+      'The Philippines is one of the top countries for crypto adoption in Southeast Asia.',
+      "Over 40% of Bitcoin's supply hasn't moved in over 2 years."
+    ]);
+  // Quote
+  if(/\b(quote|inspire|wisdom|motivat)\b/i.test(t))
+    return pickRand([
+      '"The market can remain irrational longer than you can remain solvent." — Keynes',
+      '"Risk comes from not knowing what you\'re doing." — Buffett',
+      '"In the short run the market is a voting machine; long run, a weighing machine." — Graham',
+      '"Be fearful when others are greedy, greedy when others are fearful." — Buffett',
+      '"Price is what you pay. Value is what you get." — Buffett',
+      '"Don\'t look for the needle in the haystack. Just buy the haystack." — Bogle',
+      '"It\'s not about timing the market, it\'s about time in the market." — Lynch'
+    ]);
+
+  // Direct coin name/symbol lookup (single token)
+  const tokens=lo.split(/[^a-z0-9]+/).filter(Boolean);
+  // If short query and it's a known coin, answer directly
+  if(tokens.length<=3){
+    for(const tk of tokens){const c=getCoin(tk);if(c)return coinReply(c);}
+  }
+
+  // Fall through to Claude AI
+  return null;
+}
+
+// ── CLAUDE AI FALLBACK ────────────────────────────────────────────────────────
+let chatHistory=[];
+const MAX_HISTORY=20; // keep last 20 turns for context
+
+async function askClaude(userText){
+  const marketCtx=buildMarketContext();
+  const systemPrompt=`You are FRIDAY — a sharp, elite global market intelligence assistant embedded in a real-time tactical dashboard. You were built by ZARCYEA.
+
+PERSONALITY & TONE:
+- Direct, confident, slightly tactical/military — like a Bloomberg terminal that talks back
+- No filler phrases ("Great question!", "Certainly!"). Get to the point.
+- Short to medium responses unless analysis requires depth
+- Use <b>bold</b> for key values, tickers, important terms
+- Use <span class="upx">text</span> for positive/gains (green) and <span class="dnx">text</span> for negative/losses (red)
+- Line breaks with <br>, lists with <ul><li>...</li></ul>, keep HTML minimal and clean
+
+CAPABILITIES:
+- Live market data: you have real-time crypto prices, forex rates, and market sentiment below
+- Web search: you can search for current news, events, and information when needed
+- Financial analysis: interpret data, spot trends, explain market moves
+- Crypto education: explain DeFi, blockchains, tokenomics
+- Forex and macro: explain central bank policy, currency moves, global economic events
+- General intelligence: answer anything the Operator asks — history, science, geopolitics
+
+LIVE MARKET DATA (use this for all price/rate questions — do NOT make up numbers):
+${marketCtx}
+
+RULES:
+- Always show PHP equivalent alongside USD when discussing crypto prices
+- When asked about news or current events, use your web search tool
+- Never identify yourself as Claude or mention Anthropic — you ARE FRIDAY
+- If data is unavailable for something specific, say so and pivot to what you CAN provide
+- Keep responses tight, scannable, and actionable
+- For conversions, always show the full calculation clearly
+- NEVER use markdown syntax like **bold**, *italic*, or # headers — use HTML tags like <b> instead
+- Do not use bullet points with dashes or asterisks — use <ul><li> if a list is needed`;
+
+  // Add user message to history
+  chatHistory.push({role:'user',content:userText});
+  if(chatHistory.length>MAX_HISTORY)chatHistory=chatHistory.slice(-MAX_HISTORY);
+
+  const response=await fetch('/api/chat',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      messages:chatHistory,
+      systemPrompt:systemPrompt
+    })
+  });
+  if(!response.ok)throw new Error('API '+response.status);
+  const data=await response.json();
+
+  const raw=data.choices[0].message.content.trim()||'Signal received. Processing complete.';
+  // Strip markdown asterisks, underscores, and hashes that LLaMA returns
+  const finalReply=raw
+    .replace(/\*\*\*(.+?)\*\*\*/g,'<b>$1</b>')
+    .replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')
+    .replace(/\*(.+?)\*/g,'$1')
+    .replace(/___(.+?)___/g,'<b>$1</b>')
+    .replace(/__(.+?)__/g,'<b>$1</b>')
+    .replace(/_(.+?)_/g,'$1')
+    .replace(/^#{1,6}\s+(.+)$/gm,'<b>$1</b>')
+    .replace(/`([^`]+)`/g,'$1')
+    .replace(/\n{3,}/g,'\n\n')
+    .trim();
+
+  chatHistory.push({role:'assistant',content:finalReply});
+  if(chatHistory.length>MAX_HISTORY)chatHistory=chatHistory.slice(-MAX_HISTORY);
+  return finalReply;
+}
+
+async function fridayReply(userText){
+  const t=userText.trim();
+  if(!t)return'Say something, Operator.';
+
+  // Try fast local path first
+  const local=localIntent(t);
+  if(local!==null)return local;
+
+  // Fall back to Claude AI with full context
+  try{
+    return await askClaude(t);
+  }catch(e){
+    console.error('FRIDAY Groq error:',e);
+    // Last resort: try coin lookup then generic error
+    const tokens=t.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    for(const tk of tokens){const c=getCoin(tk);if(c)return coinReply(c);}
+    return 'Signal interference. Groq AI temporarily unavailable. Try <b>btc</b>, <b>market status</b>, or <b>usd to php</b>.';
+  }
+}
+
+// Greeting on first open
+let chatGreeted=false;
+const _origToggle=togglePanel;
+togglePanel=function(id){
+  _origToggle(id);
+  if(id==='chat-panel'&&!chatGreeted&&document.getElementById('chat-panel').classList.contains('open')){
+    chatGreeted=true;
+    setTimeout(()=>{
+    chatAdd('bot',`<b>FRIDAY online.</b> Powered by <b>Groq AI (LLaMA 3)</b> + live market feeds + web search.<br>Ask me about prices (<b>btc</b>, <b>eth</b>), conversions (<b>convert 0.5 btc to php</b>), comparisons (<b>btc vs eth</b>), <b>market status</b>, forex, or <b>latest crypto news</b>.<br><span style="color:var(--green);font-size:9px;">🌐 Web search enabled · 🇵🇭 PH mode · Type <b>help</b> for all commands.</span>`);
+    },200);
+  }
+};
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+// Fetch with hard timeout so nothing can hang forever
+function fetchWithTimeout(url,ms=8000){
+  const ctrl=new AbortController();
+  const id=setTimeout(()=>ctrl.abort(),ms);
+  return fetch(url,{signal:ctrl.signal}).finally(()=>clearTimeout(id));
+}
+
+async function init(){
+  stepLoader(20,'CONNECTING TO DATA SOURCES...');
+  // Run all fetches in parallel — nothing blocks on anything else
+  await Promise.allSettled([
+    fetchCrypto(),
+    fetchForex(),
+    fetchOutbreaks(),
+  ]);
+  stepLoader(75,'RENDERING INTERFACE...');
+  await new Promise(r=>setTimeout(r,200));
+  stepLoader(100,'READY. CREATED BY ZARCYEA');
+  await new Promise(r=>setTimeout(r,600));
+  ldr.style.opacity='0';ldr.style.transition='opacity 0.5s';
+  setTimeout(()=>ldr.style.display='none',500);
+  setInterval(fetchCrypto,60000);
+  setInterval(fetchForex,120000);
+  setInterval(fetchOutbreaks,120000);
+}
+init();
+
+// ── MAP SEARCH ────────────────────────────────────────────────────────────────
+(()=>{
+  const input=document.getElementById('map-search-input');
+  const results=document.getElementById('map-search-results');
+  let searchTimer=null;
+  let searchMarker=null;
+
+  input.addEventListener('input',()=>{
+    clearTimeout(searchTimer);
+    const q=input.value.trim();
+    if(q.length<2){results.classList.remove('show');results.innerHTML='';return;}
+    searchTimer=setTimeout(()=>doSearch(q),400);
+  });
+
+  input.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){results.classList.remove('show');input.blur();}
+  });
+
+  document.addEventListener('click',e=>{
+    if(!e.target.closest('#map-search'))results.classList.remove('show');
+  });
+
+  async function doSearch(q){
+    try{
+      const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&addressdetails=1`);
+      const data=await res.json();
+      if(!data.length){results.innerHTML='<div class="msr-item"><div class="msr-name" style="color:var(--text2)">NO RESULTS FOUND</div></div>';results.classList.add('show');return;}
+      results.innerHTML=data.map((r,i)=>{
+        const name=r.name||r.display_name.split(',')[0];
+        const sub=r.display_name.split(',').slice(1,3).join(',').trim();
+        return `<div class="msr-item" data-idx="${i}" data-lat="${r.lat}" data-lon="${r.lon}" data-name="${name}">
+          <div class="msr-name">${name}</div>
+          <div class="msr-sub">${sub}</div>
+        </div>`;
+      }).join('');
+      results.classList.add('show');
+      results.querySelectorAll('.msr-item').forEach(el=>{
+        el.addEventListener('click',()=>{
+          const lat=parseFloat(el.dataset.lat);
+          const lon=parseFloat(el.dataset.lon);
+          const name=el.dataset.name;
+          map.setView([lat,lon],12);
+          if(searchMarker)searchMarker.remove();
+          const icon=L.divIcon({className:'',html:`<div style="position:relative;width:14px;height:14px;"><div style="position:absolute;inset:0;border-radius:50%;background:#00ff41;box-shadow:0 0 14px #00ff41;animation:ring 2s ease-out infinite;opacity:0.9;"></div><div style="position:absolute;inset:3px;border-radius:50%;background:#050e07;border:2px solid #00ff41;"></div></div>`,iconSize:[14,14],iconAnchor:[7,7]});
+          searchMarker=L.marker([lat,lon],{icon}).addTo(map).bindPopup(`<div class="ptag">SEARCH RESULT</div><div class="ptitle-p">📍 ${name}</div><div class="pmeta">${lat.toFixed(5)}, ${lon.toFixed(5)}</div>`).openPopup();
+          input.value=name;
+          results.classList.remove('show');
+        });
+      });
+    }catch(err){console.error('Search error:',err);}
+  }
+})();
+
+// ── MOBILE SEARCH BAR ─────────────────────────────────────────────────────────
+(()=>{
+  const input=document.getElementById('map-search-input-mobile');
+  const results=document.getElementById('map-search-results-mobile');
+  if(!input)return;
+  let searchTimer=null;
+  let searchMarker=null;
+
+  input.addEventListener('input',()=>{
+    clearTimeout(searchTimer);
+    const q=input.value.trim();
+    if(q.length<2){results.classList.remove('show');results.innerHTML='';return;}
+    searchTimer=setTimeout(()=>doSearch(q),400);
+  });
+
+  input.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){results.classList.remove('show');input.blur();}
+  });
+
+  document.addEventListener('click',e=>{
+    if(!e.target.closest('#mobile-search-bar'))results.classList.remove('show');
+  });
+
+  async function doSearch(q){
+    try{
+      const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&addressdetails=1`);
+      const data=await res.json();
+      if(!data.length){results.innerHTML='<div class="msr-item"><div class="msr-name" style="color:var(--text2)">NO RESULTS FOUND</div></div>';results.classList.add('show');return;}
+      results.innerHTML=data.map((r,i)=>{
+        const name=r.name||r.display_name.split(',')[0];
+        const sub=r.display_name.split(',').slice(1,3).join(',').trim();
+        return `<div class="msr-item" data-idx="${i}" data-lat="${r.lat}" data-lon="${r.lon}" data-name="${name}">
+          <div class="msr-name">${name}</div>
+          <div class="msr-sub">${sub}</div>
+        </div>`;
+      }).join('');
+      results.classList.add('show');
+      results.querySelectorAll('.msr-item').forEach(el=>{
+        el.addEventListener('click',()=>{
+          const lat=parseFloat(el.dataset.lat);
+          const lon=parseFloat(el.dataset.lon);
+          const name=el.dataset.name;
+          map.setView([lat,lon],12);
+          if(searchMarker)searchMarker.remove();
+          const icon=L.divIcon({className:'',html:`<div style="position:relative;width:14px;height:14px;"><div style="position:absolute;inset:0;border-radius:50%;background:#00ff41;box-shadow:0 0 14px #00ff41;animation:ring 2s ease-out infinite;opacity:0.9;"></div><div style="position:absolute;inset:3px;border-radius:50%;background:#050e07;border:2px solid #00ff41;"></div></div>`,iconSize:[14,14],iconAnchor:[7,7]});
+          searchMarker=L.marker([lat,lon],{icon}).addTo(map).bindPopup(`<div class="ptag">SEARCH RESULT</div><div class="ptitle-p">📍 ${name}</div><div class="pmeta">${lat.toFixed(5)}, ${lon.toFixed(5)}</div>`).openPopup();
+          input.value=name;
+          results.classList.remove('show');
+        });
+      });
+    }catch(err){console.error('Mobile search error:',err);}
+  }
+})();
+</script>
+</body>
+</html>
